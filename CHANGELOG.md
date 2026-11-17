@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.1 - 2026-11-17
+
+- README and project metadata: official Mapit client, Mapit API terms.
+
 ## 0.1.0 - 2026-11-17
 
 First release: every `/v1` endpoint (account, summary, vehicles, subscription, status, routes,
