@@ -1,4 +1,6 @@
-# aiomapit
+# aiomapit: the official Python client for the Mapit API
+
+Made and maintained by [Mapit](https://mapit.me). Mapit lists its official and approved apps at <https://developers.mapit.me/approved-apps>. Other projects that use Mapit are not endorsed by Mapit unless they are listed there.
 
 Async Python client for the [Mapit](https://mapit.me) API (`https://api.mapit.me/v1`): the account,
 vehicles, last reported position and routes that the Mapit app shows. Read-only, apart from disconnecting
