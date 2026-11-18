@@ -26,6 +26,7 @@ from .exceptions import (
 from .models import (
     Account,
     Connection,
+    Event,
     Page,
     Response,
     RideStats,
@@ -279,7 +280,9 @@ class MapitClient:
         return await self._get(
             "/status",
             lambda d: Page(
-                tuple(VehicleStatus.from_json(v) for v in d["vehicles"]), d.get("nextCursor")
+                tuple(VehicleStatus.from_json(v) for v in d["vehicles"]),
+                d.get("nextCursor"),
+                events_cursor=d.get("eventsCursor"),
             ),
             {"cursor": cursor},
         )
@@ -290,6 +293,37 @@ class MapitClient:
 
     async def get_vehicle_status(self, vehicle_id: str) -> Response[VehicleStatus]:
         return await self._get(f"/vehicles/{self._id(vehicle_id)}/status", VehicleStatus.from_json)
+
+    # -- events (needs mapit:location:read) --------------------------------
+
+    async def get_events_page(
+        self, cursor: str | None = None, limit: int | None = None
+    ) -> Response[Page[Event]]:
+        """Alerts after ``cursor``, oldest first; without one, the last 24 hours (do not act on
+        those). Store ``next_cursor`` for the next call, and call again while ``has_more``.
+        Call it when ``events_cursor`` on a status page changes, not on a timer."""
+        return await self._get(
+            "/events",
+            lambda d: Page(
+                tuple(Event.from_json(e) for e in d["events"]),
+                d["nextCursor"],
+                has_more=bool(d.get("hasMore", False)),
+            ),
+            {"cursor": cursor, "limit": limit},
+        )
+
+    async def iter_events(
+        self, cursor: str | None = None, limit: int | None = None
+    ) -> AsyncIterator[Event]:
+        """Every alert after ``cursor``, following ``has_more``. To resume later, use
+        :meth:`get_events_page`, whose ``next_cursor`` is what to store."""
+        while True:
+            page = (await self.get_events_page(cursor, limit)).data
+            for event in page.items:
+                yield event
+            if not page.has_more:
+                return
+            cursor = page.next_cursor
 
     # -- routes (needs mapit:routes:read) ----------------------------------
 

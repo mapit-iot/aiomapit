@@ -65,6 +65,7 @@ With one, the session stays yours.
 | `get_vehicles_page(cursor)`, `iter_vehicles()` | `GET /vehicles` |
 | `get_vehicle(id)`, `get_subscription(id)` | `GET /vehicles/{id}`, `.../subscription` |
 | `get_statuses_page(cursor)`, `iter_statuses()`, `get_vehicle_status(id)` (Location permission) | `GET /status`, `/vehicles/{id}/status` |
+| `get_events_page(cursor, limit=)`, `iter_events(cursor)` (Location permission) | `GET /events` |
 | `get_routes_page(id, day=, start=, end=, ...)`, `iter_routes(id, ...)` (Route history permission) | `GET /vehicles/{id}/routes` |
 | `get_route(id, route_id, geometry=, simplify=)` (Route history) | `GET /vehicles/{id}/routes/{route_id}` |
 | `get_ride_stats(id, start, end, timezone=)` (Route history) | `GET /vehicles/{id}/stats` |
@@ -76,6 +77,36 @@ reported, so poll `iter_statuses()` once a minute at most.
 
 Every `get_*` returns a `Response` with `data` (a frozen dataclass, snake_case fields),
 `not_modified` and `etag`.
+
+## Alerts
+
+`GET /events` lists the alerts the Mapit app pushed to the account's phones (movement, geofence
+entry and exit, ignition left on, fall, accident, contacts notified), oldest first, for up to
+7 days. They arrive a minute or two after the event: fine for automations, not a theft alarm.
+Rather than polling it, watch `events_cursor` on the status page you already poll, and fetch
+events when it changes. Store `next_cursor` between runs; the first call without a cursor returns
+the last 24 hours, which you should not act on. Delivery is at least once, so skip an `id` you
+have seen. `EventType.UNKNOWN` is a type this version does not know yet.
+
+```python
+seen = None
+cursor = load_cursor()  # None the first time
+while True:
+    page = (await client.get_statuses_page()).data
+    if page.events_cursor != seen:
+        seen = page.events_cursor
+        first_run = cursor is None
+        while True:
+            events = (await client.get_events_page(cursor)).data
+            if not first_run:
+                for event in events.items:
+                    print(event.type, event.vehicle_id, event.occurred_at)
+            cursor = events.next_cursor
+            if not events.has_more:
+                break
+        save_cursor(cursor)
+    await asyncio.sleep(60)
+```
 
 ## ETag and 304
 

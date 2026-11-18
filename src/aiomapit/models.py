@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import date, datetime
+from enum import StrEnum
 from typing import Any
 
 type Json = Mapping[str, Any]
@@ -309,14 +310,63 @@ class Connection:
         )
 
 
+class EventType(StrEnum):
+    """What an alert is about. ``UNKNOWN`` stands for types added to the API after this
+    release: ignore them."""
+
+    MOVEMENT_DETECTED = "movement_detected"  # also when a ride starts after a stop
+    GEOFENCE_ENTERED = "geofence_entered"
+    GEOFENCE_EXITED = "geofence_exited"
+    IGNITION_ON_DETECTED = "ignition_on_detected"  # parked with the ignition on
+    FALL_DETECTED = "fall_detected"
+    ACCIDENT_DETECTED = "accident_detected"
+    ACCIDENT_CONTACTS_NOTIFIED = "accident_contacts_notified"
+    UNKNOWN = "unknown"
+
+    @classmethod
+    def _missing_(cls, value: object) -> EventType:
+        return cls.UNKNOWN
+
+
+@dataclass(frozen=True, slots=True)
+class Event:
+    """An alert the Mapit app pushed. ``id`` is stable: skip one you have seen.
+    ``occurred_at`` is never after ``notified_at``; ``geofence_name`` only on geofence events."""
+
+    id: str
+    type: EventType
+    vehicle_id: str
+    occurred_at: datetime
+    notified_at: datetime
+    geofence_name: str | None = None
+
+    @classmethod
+    def from_json(cls, d: Json) -> Event:
+        geofence = d.get("geofence")
+        return cls(
+            id=d["id"],
+            type=EventType(d["type"]),
+            vehicle_id=d["vehicleId"],
+            occurred_at=_req_dt(d["occurredAt"]),
+            notified_at=_req_dt(d["notifiedAt"]),
+            geofence_name=geofence.get("name") if geofence else None,
+        )
+
+
 @dataclass(frozen=True, slots=True)
 class Page[T]:
     """One page of ``items``. ``filter`` is what the server applied to a routes list;
-    send it back unchanged (with ``next_cursor``) to get the next page."""
+    send it back unchanged (with ``next_cursor``) to get the next page.
+
+    On a status page, ``events_cursor`` changes when there are new events (None when the
+    account had no alert today or yesterday, UTC). On an events page, ``next_cursor`` is
+    always set: store it for the next call; ``has_more`` says to call again now."""
 
     items: tuple[T, ...]
     next_cursor: str | None
     filter: Json | None = None
+    events_cursor: str | None = None
+    has_more: bool = False
 
 
 @dataclass(frozen=True, slots=True)

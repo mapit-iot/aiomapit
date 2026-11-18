@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "aiomapit"
-version = "0.1.1"
+version = "0.2.0"
 description = "Async Python client for the Mapit API"
 readme = "README.md"
 license = "MIT"

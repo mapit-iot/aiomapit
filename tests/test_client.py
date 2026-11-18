@@ -9,6 +9,7 @@ from yarl import URL
 
 import aiomapit
 from aiomapit import (
+    EventType,
     MapitAuthError,
     MapitClient,
     MapitConnectionError,
@@ -56,6 +57,14 @@ ROUTE = {
     "avgSpeedKmh": 40,
     "maxSpeedKmh": 90,
     "startTimezone": "Europe/Madrid",
+}
+EVENT = {
+    "id": "evt_1",
+    "type": "geofence_entered",
+    "vehicleId": "veh_1",
+    "occurredAt": "2026-11-18T08:01:12.000Z",
+    "notifiedAt": "2026-11-18T08:01:30.000Z",
+    "geofence": {"name": "Home"},
 }
 CONNECTION = {
     "id": "con_1",
@@ -178,14 +187,16 @@ async def test_subscription(mocked: aioresponses, client: MapitClient) -> None:
 
 
 async def test_statuses_and_vehicle_status(mocked: aioresponses, client: MapitClient) -> None:
-    mocked.get(f"{BASE}/status", payload={"vehicles": [STATUS], "nextCursor": "c2"})
+    mocked.get(
+        f"{BASE}/status", payload={"vehicles": [STATUS], "nextCursor": "c2", "eventsCursor": "e1"}
+    )
     mocked.get(f"{BASE}/vehicles/veh_1/status", payload=STATUS)
     mocked.get(
         f"{BASE}/vehicles/veh_2/status",
         payload={"vehicleId": "veh_2", "state": None, "reason": "no_linked_device"},
     )
     page = (await client.get_statuses_page()).data
-    assert page.next_cursor == "c2"
+    assert (page.next_cursor, page.events_cursor) == ("c2", "e1")
     state = page.items[0].state
     assert state is not None
     assert (state.status, state.battery_percent, state.voltage, state.latitude) == (
@@ -200,6 +211,45 @@ async def test_statuses_and_vehicle_status(mocked: aioresponses, client: MapitCl
     assert (await client.get_vehicle_status("veh_1")).data == page.items[0]
     none = (await client.get_vehicle_status("veh_2")).data
     assert (none.state, none.reason, none.fetched_at) == (None, "no_linked_device", None)
+
+
+async def test_events_page(mocked: aioresponses, client: MapitClient) -> None:
+    later = {**EVENT, "id": "evt_2", "type": "tow_detected", "geofence": None}
+    mocked.get(
+        f"{BASE}/events?cursor=cur_a&limit=2",
+        payload={
+            "events": [EVENT, later],
+            "nextCursor": "cur_b",
+            "hasMore": True,
+            "fetchedAt": "2026-11-18T08:02:00.000Z",
+        },
+    )
+    page = (await client.get_events_page("cur_a", limit=2)).data
+    first, second = page.items
+    assert (first.id, first.type, first.vehicle_id, first.geofence_name) == (
+        "evt_1",
+        EventType.GEOFENCE_ENTERED,
+        "veh_1",
+        "Home",
+    )
+    assert first.occurred_at == datetime(2026, 11, 18, 8, 1, 12, tzinfo=UTC)
+    assert first.notified_at == datetime(2026, 11, 18, 8, 1, 30, tzinfo=UTC)
+    # A type added to the API later is still parsed, as unknown.
+    assert (second.type, second.geofence_name) == (EventType.UNKNOWN, None)
+    assert (page.next_cursor, page.has_more) == ("cur_b", True)
+
+
+async def test_events_page_304_keeps_the_cursor(mocked: aioresponses, client: MapitClient) -> None:
+    empty = {"events": [], "nextCursor": "cur_a", "fetchedAt": "2026-11-18T08:02:00.000Z"}
+    mocked.get(f"{BASE}/events?cursor=cur_a", payload=empty, headers={"ETag": 'W/"e"'})
+    mocked.get(f"{BASE}/events?cursor=cur_a", status=304)
+    first = await client.get_events_page("cur_a")
+    again = await client.get_events_page("cur_a")
+    assert (again.not_modified, again.data) == (True, first.data)
+    assert again.data.next_cursor == "cur_a"
+    assert not again.data.has_more
+    second = mocked.requests[("GET", URL(f"{BASE}/events?cursor=cur_a"))][1]
+    assert second.kwargs["headers"]["If-None-Match"] == 'W/"e"'
 
 
 async def test_routes_page_sends_filters(mocked: aioresponses, client: MapitClient) -> None:
@@ -362,6 +412,17 @@ async def test_iter_statuses_follows_cursors(mocked: aioresponses, client: Mapit
         payload={"vehicles": [{**STATUS, "vehicleId": "veh_2"}], "nextCursor": None},
     )
     assert [s.vehicle_id async for s in client.iter_statuses()] == ["veh_1", "veh_2"]
+
+
+async def test_iter_events_follows_has_more(mocked: aioresponses, client: MapitClient) -> None:
+    mocked.get(
+        f"{BASE}/events?limit=1", payload={"events": [EVENT], "nextCursor": "c2", "hasMore": True}
+    )
+    mocked.get(
+        f"{BASE}/events?cursor=c2&limit=1",
+        payload={"events": [{**EVENT, "id": "evt_2"}], "nextCursor": "c3", "hasMore": False},
+    )
+    assert [e.id async for e in client.iter_events(limit=1)] == ["evt_1", "evt_2"]
 
 
 async def test_iter_routes_reuses_the_first_window(
