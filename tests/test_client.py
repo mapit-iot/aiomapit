@@ -786,4 +786,4 @@ async def test_untagged_answer_drops_the_old_tag(mocked: aioresponses, client: M
 
 
 def test_version_is_available_without_a_client() -> None:
-    assert aiomapit.__version__ == "0.1.1"
+    assert aiomapit.__version__ == "0.2.0"
