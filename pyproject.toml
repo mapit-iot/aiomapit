@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "aiomapit"
-version = "0.1.1"
+version = "0.2.0"
 description = "Async Python client for the Mapit API"
 readme = "README.md"
 license = "MIT"
@@ -46,7 +46,7 @@ packages = ["src/aiomapit"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
-addopts = "--cov=aiomapit --cov-report=term-missing --cov-fail-under=95"
+addopts = "--cov=aiomapit --cov-report=term-missing --cov-fail-under=100"
 testpaths = ["tests"]
 
 [tool.mypy]

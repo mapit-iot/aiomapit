@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.0 - 2026-11-18
+
+- Alerts the Mapit app pushed (`GET /v1/events`, Location permission): `get_events_page(cursor, limit)`
+  and `iter_events()` return `Event` (`id`, `type`, `vehicle_id`, `occurred_at`, `notified_at`,
+  `geofence_name`). `EventType` lists the types; ones added to the API later parse as `UNKNOWN`.
+  `Page.has_more` says to fetch the next events page now.
+- `Page.events_cursor` on status pages: it changes when there are new alerts.
+
 ## 0.1.1 - 2026-11-17
 
 - README and project metadata: official Mapit client, Mapit API terms.
